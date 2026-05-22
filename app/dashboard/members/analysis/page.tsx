@@ -1,95 +1,7 @@
 "use client";
 
-type RiskLevel = "긴급" | "주의" | "안정";
-
-interface BarData {
-  isolation: number;
-  health: number;
-  vitality: number;
-  emotion: number;
-  cognition: number;
-}
-
-interface Member {
-  id: number;
-  name: string;
-  initial: string;
-  avatarColor: string;
-  age: number;
-  lastContact: string;
-  tags: { label: string; color: string }[];
-  bars: BarData;
-  risk: RiskLevel;
-}
-
-const members: Member[] = [
-  {
-    id: 1,
-    name: "김말복",
-    initial: "김",
-    avatarColor: "bg-blue-100 text-blue-700",
-    age: 78,
-    lastContact: "3일 전",
-    tags: [
-      { label: "⚠ 고립감 경고", color: "text-red-500 bg-red-50 border-red-200" },
-      { label: "📉 활력 저하", color: "text-orange-500 bg-orange-50 border-orange-200" },
-    ],
-    bars: { isolation: 3, health: 4, vitality: 2, emotion: 4, cognition: 4 },
-    risk: "긴급",
-  },
-  {
-    id: 2,
-    name: "이순자",
-    initial: "이",
-    avatarColor: "bg-green-100 text-green-700",
-    age: 82,
-    lastContact: "2일 전",
-    tags: [
-      { label: "🩺 건강 불안", color: "text-orange-500 bg-orange-50 border-orange-200" },
-    ],
-    bars: { isolation: 3, health: 2, vitality: 3, emotion: 3, cognition: 5 },
-    risk: "긴급",
-  },
-  {
-    id: 3,
-    name: "박창식",
-    initial: "박",
-    avatarColor: "bg-green-100 text-green-700",
-    age: 75,
-    lastContact: "어제",
-    tags: [
-      { label: "⚡ 감정 변동", color: "text-orange-500 bg-orange-50 border-orange-200" },
-    ],
-    bars: { isolation: 3, health: 3, vitality: 4, emotion: 4, cognition: 5 },
-    risk: "주의",
-  },
-  {
-    id: 4,
-    name: "최영옥",
-    initial: "최",
-    avatarColor: "bg-amber-100 text-amber-700",
-    age: 80,
-    lastContact: "어제",
-    tags: [
-      { label: "🧠 인지 부하", color: "text-pink-500 bg-pink-50 border-pink-200" },
-    ],
-    bars: { isolation: 3, health: 3, vitality: 4, emotion: 4, cognition: 1 },
-    risk: "주의",
-  },
-  {
-    id: 5,
-    name: "정태수",
-    initial: "정",
-    avatarColor: "bg-green-100 text-green-700",
-    age: 71,
-    lastContact: "오늘",
-    tags: [
-      { label: "✅ 특이사항 없음", color: "text-green-600 bg-green-50 border-green-200" },
-    ],
-    bars: { isolation: 5, health: 4, vitality: 5, emotion: 4, cognition: 4 },
-    risk: "안정",
-  },
-];
+import Link from "next/link";
+import { members, type BarData, type RiskLevel } from "./_data";
 
 function BarChart({ bars }: { bars: BarData }) {
   const categories = [
@@ -131,9 +43,9 @@ function BarChart({ bars }: { bars: BarData }) {
 
 function RiskBadge({ level }: { level: RiskLevel }) {
   const config = {
-    "긴급": { dot: "bg-red-500", text: "text-red-500" },
-    "주의": { dot: "bg-amber-400", text: "text-amber-500" },
-    "안정": { dot: "bg-green-500", text: "text-green-500" },
+    긴급: { dot: "bg-red-500", text: "text-red-500" },
+    주의: { dot: "bg-amber-400", text: "text-amber-500" },
+    안정: { dot: "bg-green-500", text: "text-green-500" },
   };
 
   const { dot, text } = config[level];
@@ -148,9 +60,12 @@ function RiskBadge({ level }: { level: RiskLevel }) {
 
 function getBorderColor(risk: RiskLevel) {
   switch (risk) {
-    case "긴급": return "border-l-red-500";
-    case "주의": return "border-l-amber-400";
-    case "안정": return "border-l-green-500";
+    case "긴급":
+      return "border-l-red-500";
+    case "주의":
+      return "border-l-amber-400";
+    case "안정":
+      return "border-l-green-500";
   }
 }
 
@@ -215,12 +130,12 @@ export default function AnalysisPage() {
             key={member.id}
             className={`bg-white rounded-xl shadow-sm p-5 border-l-4 ${getBorderColor(member.risk)} flex items-center gap-6`}
           >
-            {/* Avatar */}
-            <div className={`w-14 h-14 rounded-full ${member.avatarColor} flex items-center justify-center text-xl font-bold shrink-0`}>
+            <div
+              className={`w-14 h-14 rounded-full ${member.avatarColor} flex items-center justify-center text-xl font-bold shrink-0`}
+            >
               {member.initial}
             </div>
 
-            {/* Info */}
             <div className="flex-1 min-w-0">
               <p className="text-base font-semibold text-gray-900">
                 {member.name} ({member.age}세)
@@ -238,20 +153,20 @@ export default function AnalysisPage() {
               </div>
             </div>
 
-            {/* Bar Chart */}
             <div className="shrink-0">
               <BarChart bars={member.bars} />
             </div>
 
-            {/* Risk Badge */}
             <div className="shrink-0 w-16 flex justify-center">
               <RiskBadge level={member.risk} />
             </div>
 
-            {/* Report Button */}
-            <button className="shrink-0 bg-slate-800 text-white text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-slate-700 flex items-center gap-1.5">
+            <Link
+              href={`/dashboard/members/analysis/${member.id}`}
+              className="shrink-0 bg-slate-800 text-white text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-slate-700 flex items-center gap-1.5"
+            >
               📋 리포트
-            </button>
+            </Link>
           </div>
         ))}
       </div>
