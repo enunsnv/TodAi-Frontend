@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -80,18 +81,30 @@ export default function DashboardLayout({
     <div className="flex h-screen">
       <aside className="w-60 bg-slate-800 text-slate-200 flex flex-col shrink-0">
         <div className="p-4 flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center transition-transform duration-200 hover:scale-105">
-            <span className="text-white text-sm">•••</span>
-          </div>
+          <Image
+            src="/logo.svg"
+            alt="TodAi"
+            width={48}
+            height={28}
+            priority
+            className="transition-transform duration-200 hover:scale-105"
+          />
           <div>
-            <p className="font-semibold text-sm">서비스명</p>
+            <p className="font-semibold text-sm">TodAi</p>
             <p className="text-xs text-slate-400">사회복지사 관리 시스템</p>
           </div>
         </div>
 
         <div className="px-4 pb-4 flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
-            김
+          <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white">
+            <svg
+              className="w-5 h-5"
+              fill="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.4c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" />
+            </svg>
           </div>
           <div>
             <p className="text-sm font-semibold">김복지</p>

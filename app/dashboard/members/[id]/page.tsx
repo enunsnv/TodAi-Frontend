@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { use, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { use, useEffect, useMemo, useState } from "react";
 import {
   members,
+  type ChatMessage,
   type DailyEmotionScore,
+  type DailyView,
   type Member,
   type MonthlyDay,
   type MonthlyView,
@@ -14,6 +16,503 @@ import {
 } from "../_data";
 
 type ReportTab = "일간" | "주간" | "월간";
+
+interface DailyApiTimeline {
+  start_time: string | null;
+  end_time: string | null;
+  conv_time: number | null;
+}
+
+interface DailyApiConvLog {
+  message_id: string;
+  content: string;
+  name: string;
+}
+
+interface DailyApiScoreItem {
+  type?: string;
+  name?: string;
+  score: number;
+}
+
+interface DailyApiData {
+  timeline: DailyApiTimeline;
+  conv_logs: DailyApiConvLog[];
+  summary_text: string | null;
+  score: (number | DailyApiScoreItem)[];
+}
+
+interface DailyApiResponse {
+  data: DailyApiData;
+}
+
+interface DailyApiResult {
+  daily: DailyView;
+  chatLog: ChatMessage[];
+  conversationTimeRange: string;
+  conversationTimeStart: string;
+  conversationDurationMin: number;
+}
+
+interface WeeklyApiDay {
+  date: string;
+  day: string;
+  score: number | null;
+  conv_time: number | null;
+}
+
+interface WeeklyApiSummary {
+  text?: string;
+  date?: string;
+  author?: string;
+  tone?: "good" | "warn" | "bad";
+}
+
+interface WeeklyApiRadarItem {
+  type?: string;
+  name?: string;
+  score: number;
+}
+
+interface WeeklyApiData {
+  weekly_data: WeeklyApiDay[];
+  weekly_scores_radar: (number | WeeklyApiRadarItem)[];
+  summaries: (WeeklyApiSummary | string)[];
+}
+
+interface WeeklyApiResponse {
+  data: WeeklyApiData;
+}
+
+interface MonthlyApiDay {
+  date: string;
+  day: string;
+  score: number | null;
+  conv_time: number | null;
+}
+
+interface MonthlyApiNumericItem {
+  type?: string;
+  name?: string;
+  score?: number;
+  value?: number;
+}
+
+interface MonthlyApiData {
+  monthly_data: MonthlyApiDay[];
+  weekly_scores: (number | MonthlyApiNumericItem)[];
+  weekly_conv_time: (number | MonthlyApiNumericItem)[];
+  monthly_summaries: (string | { text?: string; content?: string })[];
+}
+
+interface MonthlyApiResponse {
+  data: MonthlyApiData;
+}
+
+const DAILY_AXES: DailyEmotionScore["axis"][] = [
+  "사회적 고립",
+  "인지 부하",
+  "감정 변동",
+  "일상 활력",
+  "건강 불안",
+];
+
+function scoreTone(score: number): DailyEmotionScore["tone"] {
+  if (score >= 80) return "good";
+  if (score >= 50) return "warn";
+  return "bad";
+}
+
+function trimSeconds(time: string | null): string {
+  if (!time) return "-";
+  const [h, m] = time.split(":");
+  if (!h || !m) return time;
+  return `${h}:${m}`;
+}
+
+function formatDateLabel(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  if (!y || !m || !d) return date;
+  const weekday = ["일", "월", "화", "수", "목", "금", "토"][new Date(y, m - 1, d).getDay()];
+  return `${y}년 ${m}월 ${d}일 (${weekday}) · 일간 대화`;
+}
+
+function formatKoreanDate(date: string): string {
+  const [y, m, d] = date.split("-");
+  if (!y || !m || !d) return date;
+  return `${y}. ${m.padStart(2, "0")}. ${d.padStart(2, "0")}`;
+}
+
+function SkeletonBlock({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse bg-gray-200 rounded ${className}`} />;
+}
+
+function DailySkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-5">
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-gray-100 p-6 space-y-3">
+          <SkeletonBlock className="h-3 w-40 bg-gray-200" />
+          <SkeletonBlock className="h-8 w-48 bg-gray-300" />
+        </div>
+        <div className="p-6 space-y-4">
+          <SkeletonBlock className="h-3 w-32" />
+          <SkeletonBlock className="h-2 w-full" />
+          <div className="grid grid-cols-4 gap-3 pt-5 border-t border-gray-100">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="space-y-2">
+                <SkeletonBlock className="h-2.5 w-16" />
+                <SkeletonBlock className="h-5 w-12" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-5">
+        <SkeletonBlock className="h-4 w-28" />
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="space-y-2">
+            <div className="flex justify-between">
+              <SkeletonBlock className="h-3 w-20" />
+              <SkeletonBlock className="h-3 w-10" />
+            </div>
+            <SkeletonBlock className="h-2 w-full" />
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+        <SkeletonBlock className="h-4 w-24" />
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className={`flex ${i % 2 === 0 ? "justify-start" : "justify-end"}`}>
+            <SkeletonBlock className="h-10 w-2/3 rounded-2xl" />
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-3">
+        <SkeletonBlock className="h-4 w-32" />
+        <SkeletonBlock className="h-3 w-full" />
+        <SkeletonBlock className="h-3 w-full" />
+        <SkeletonBlock className="h-3 w-5/6" />
+        <SkeletonBlock className="h-3 w-4/6" />
+      </div>
+    </div>
+  );
+}
+
+function WeeklySkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-5">
+      <div className="space-y-5">
+        <div className="bg-white rounded-2xl p-6 shadow-sm space-y-5">
+          <SkeletonBlock className="h-4 w-40" />
+          <SkeletonBlock className="h-56 w-full" />
+          <div className="grid grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonBlock key={i} className="h-16" />
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-6 shadow-sm space-y-3">
+          <SkeletonBlock className="h-4 w-32" />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <SkeletonBlock key={i} className="h-10 w-full" />
+          ))}
+        </div>
+      </div>
+      <div className="space-y-5">
+        <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+          <SkeletonBlock className="h-4 w-44" />
+          <SkeletonBlock className="h-72 w-full rounded-full" />
+          <div className="grid grid-cols-3 gap-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <SkeletonBlock key={i} className="h-16" />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonthlySkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-5">
+        <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+          <SkeletonBlock className="h-4 w-40" />
+          <div className="grid grid-cols-7 gap-2">
+            {Array.from({ length: 35 }).map((_, i) => (
+              <SkeletonBlock key={i} className="aspect-square" />
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+          <SkeletonBlock className="h-4 w-40" />
+          <SkeletonBlock className="h-56 w-full" />
+          <div className="grid grid-cols-4 gap-3 pt-5 border-t border-gray-100">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonBlock key={i} className="h-12" />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-3">
+        <SkeletonBlock className="h-4 w-48" />
+        <SkeletonBlock className="h-3 w-full" />
+        <SkeletonBlock className="h-3 w-full" />
+        <SkeletonBlock className="h-3 w-5/6" />
+      </div>
+    </div>
+  );
+}
+
+function mapDailyApi(api: DailyApiData, date: string): DailyApiResult {
+  const rawScores = api.score ?? [];
+  const numericScores = rawScores.map((v) =>
+    typeof v === "number" ? v : (v?.score ?? 0),
+  );
+  const scoreByName = new Map<string, number>();
+  for (const v of rawScores) {
+    if (typeof v === "object" && v) {
+      const key = v.name ?? v.type;
+      if (key) scoreByName.set(key, v.score ?? 0);
+    }
+  }
+  const emotionScores: DailyEmotionScore[] = DAILY_AXES.map((axis, i) => {
+    const score = scoreByName.get(axis) ?? numericScores[i] ?? 0;
+    return { axis, score, tone: scoreTone(score) };
+  });
+
+  const validScores = numericScores.filter((s) => typeof s === "number");
+  const averageScore = validScores.length
+    ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length)
+    : 0;
+  const maxScore = validScores.length ? Math.max(...validScores) : 0;
+
+  const statusTone: DailyEmotionScore["tone"] = scoreTone(averageScore);
+  const statusLabel =
+    statusTone === "good" ? "정상" : statusTone === "warn" ? "주의" : "위험";
+  const dangerCount = emotionScores.filter((e) => e.tone === "bad").length;
+  const warningTone: DailyEmotionScore["tone"] =
+    dangerCount >= 2 ? "bad" : dangerCount === 1 ? "warn" : "good";
+  const warningLabel = warningTone === "good" ? "없음" : "있음";
+
+  const start = trimSeconds(api.timeline?.start_time ?? null);
+  const end = trimSeconds(api.timeline?.end_time ?? null);
+  const conversationTimeRange =
+    start === "-" && end === "-" ? "-" : `${start} - ${end}`;
+
+  const chatLog: ChatMessage[] = (api.conv_logs ?? [])
+    .filter((c) => c?.content)
+    .map((c) => ({
+      speaker: c.name === "어르신" ? "어르신" : "말동무",
+      text: c.content,
+    }));
+
+  const totalMessageCount = (api.conv_logs ?? []).length;
+  const PREVIEW_LIMIT = 4;
+  const hiddenMessageCount = Math.max(0, totalMessageCount - PREVIEW_LIMIT);
+
+  return {
+    daily: {
+      dateLabel: formatDateLabel(date),
+      averageScore,
+      maxScore,
+      statusLabel,
+      statusTone,
+      warningLabel,
+      warningTone,
+      emotionScores,
+      summary: api.summary_text ?? "요약 정보가 아직 없습니다.",
+      totalMessageCount,
+      hiddenMessageCount,
+    },
+    chatLog: chatLog.slice(0, PREVIEW_LIMIT),
+    conversationTimeRange,
+    conversationTimeStart: api.timeline?.start_time
+      ? trimSeconds(api.timeline.start_time)
+      : "-",
+    conversationDurationMin: api.timeline?.conv_time ?? 0,
+  };
+}
+
+function formatRangeLabel(start: string, end: string): string {
+  const [, sm, sd] = start.split("-").map(Number);
+  const [ey, em, ed] = end.split("-").map(Number);
+  if (!sm || !sd || !em || !ed) return `${start} - ${end}`;
+  return `${ey}년 ${sm}월 ${sd}일 - ${em}월 ${ed}일`;
+}
+
+function mapWeeklyApi(api: WeeklyApiData, fallback: WeeklyView, today: string): WeeklyView {
+  const apiDays = api.weekly_data ?? [];
+  const days = apiDays.map((d) => ({
+    label: d.day,
+    minutes: d.conv_time ?? 0,
+    score: d.score ?? 0,
+    isToday: d.date === today,
+  }));
+
+  const validScores = apiDays
+    .map((d) => d.score)
+    .filter((s): s is number => typeof s === "number");
+  const averageScore = validScores.length
+    ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length)
+    : 0;
+  const maxScore = validScores.length ? Math.max(...validScores) : 0;
+
+  const statusTone = scoreTone(averageScore);
+  const statusLabel =
+    statusTone === "good" ? "정상" : statusTone === "warn" ? "주의" : "위험";
+  const lowDays = validScores.filter((s) => s < 50).length;
+  const warningTone: DailyEmotionScore["tone"] =
+    lowDays >= 2 ? "bad" : lowDays === 1 ? "warn" : "good";
+  const warningLabel = warningTone === "good" ? "없음" : "있음";
+
+  const radarValues = (api.weekly_scores_radar ?? []).map((v) =>
+    typeof v === "number" ? v : (v?.score ?? 0),
+  );
+  const radarByName = new Map<string, number>();
+  for (const v of api.weekly_scores_radar ?? []) {
+    if (typeof v === "object" && v) {
+      const key = v.name ?? v.type;
+      if (key) radarByName.set(key, v.score ?? 0);
+    }
+  }
+  const radar: RadarMetric[] = DAILY_AXES.map((axis, i) => ({
+    axis,
+    thisWeek: radarByName.get(axis) ?? radarValues[i] ?? 0,
+    lastWeek: fallback.radar[i]?.lastWeek ?? 0,
+  }));
+
+  const summaryItems = (api.summaries ?? []).map((s, i) => {
+    if (typeof s === "string") {
+      return {
+        text: s,
+        date: apiDays[i]?.date ?? "",
+        author: "AI 자동 감지",
+        tone: "warn" as const,
+      };
+    }
+    return {
+      text: s.text ?? "",
+      date: s.date ?? apiDays[i]?.date ?? "",
+      author: s.author ?? "AI 자동 감지",
+      tone: s.tone ?? "warn",
+    };
+  });
+
+  const firstDate = apiDays[0]?.date ?? today;
+  const lastDate = apiDays[apiDays.length - 1]?.date ?? today;
+
+  return {
+    ...fallback,
+    rangeLabel: formatRangeLabel(firstDate, lastDate),
+    days: days.length ? days : fallback.days,
+    averageScore,
+    maxScore,
+    statusLabel,
+    statusTone,
+    warningLabel,
+    warningTone,
+    radar,
+    summaryItems: summaryItems.length ? summaryItems : fallback.summaryItems,
+  };
+}
+
+const MONTHLY_SUMMARY_LABELS = [
+  "월간 요약",
+  "대화 추이",
+  "건강 우려",
+  "정서 안정도",
+  "다음 달 계획",
+];
+
+function mapMonthlyApi(api: MonthlyApiData, fallback: MonthlyView, today: string): MonthlyView {
+  const apiDays = api.monthly_data ?? [];
+  if (!apiDays.length) return fallback;
+
+  const firstDate = apiDays[0].date;
+  const [year, month] = firstDate.split("-").map(Number);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const startWeekday = new Date(year, month - 1, 1).getDay();
+
+  const dayMap = new Map<number, MonthlyApiDay>();
+  for (const d of apiDays) {
+    const dayNum = Number(d.date.split("-")[2]);
+    if (!Number.isNaN(dayNum)) dayMap.set(dayNum, d);
+  }
+
+  const days: MonthlyDay[] = [];
+  for (let i = 1; i <= daysInMonth; i++) {
+    const entry = dayMap.get(i);
+    const isoDate = `${year}-${String(month).padStart(2, "0")}-${String(i).padStart(2, "0")}`;
+    days.push({
+      day: i,
+      score: entry && typeof entry.score === "number" ? entry.score : null,
+      isToday: isoDate === today,
+    });
+  }
+
+  const validScores = apiDays
+    .map((d) => d.score)
+    .filter((s): s is number => typeof s === "number");
+  const averageScore = validScores.length
+    ? Math.round((validScores.reduce((a, b) => a + b, 0) / validScores.length) * 100) / 100
+    : 0;
+  const maxScore = validScores.length ? Math.max(...validScores) : 0;
+  const minScore = validScores.length ? Math.min(...validScores) : 0;
+  const conversationDays = apiDays.filter(
+    (d) => typeof d.conv_time === "number" && d.conv_time > 0,
+  ).length;
+
+  const toNumber = (v: number | MonthlyApiNumericItem | undefined): number => {
+    if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+    if (v && typeof v === "object") {
+      const n = v.score ?? v.value ?? 0;
+      return Number.isFinite(n) ? Number(n) : 0;
+    }
+    return 0;
+  };
+  const weeklyScores = (api.weekly_scores ?? []).map(toNumber);
+  const weeklyConv = (api.weekly_conv_time ?? []).map(toNumber);
+  const weekCount = Math.max(weeklyScores.length, weeklyConv.length);
+  const weekTrend = Array.from({ length: weekCount }, (_, i) => ({
+    label: `${i + 1}주차`,
+    range: `${i + 1}주차`,
+    score: weeklyScores[i] ?? 0,
+  }));
+
+  const summaries = api.monthly_summaries ?? [];
+  const reportText = summaries
+    .map((s, i) => {
+      const text =
+        typeof s === "string" ? s : (s?.text ?? s?.content ?? "");
+      if (!text) return "";
+      const label = MONTHLY_SUMMARY_LABELS[i];
+      return label ? `[${label}] ${text}` : text;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+
+  return {
+    ...fallback,
+    title: `월간 감정지수 - ${year}년 ${month}월`,
+    subtitle: "날짜별 감정지수 (0-100점)",
+    startWeekday,
+    daysInMonth,
+    days,
+    weekTrend: weekTrend.length ? weekTrend : fallback.weekTrend,
+    averageScore,
+    conversationDays,
+    maxScore,
+    minScore,
+    reportTitle: `월간 분석 리포트 - ${year}년 ${month}월`,
+    reportText: reportText || fallback.reportText,
+  };
+}
 
 function WellbeingBar({
   label,
@@ -97,9 +596,27 @@ function EmotionScoreBar({ item }: { item: DailyEmotionScore }) {
   );
 }
 
-function DailyView({ member }: { member: Member }) {
-  const d = member.daily;
-  const visibleChat = member.chatLog;
+function DailyView({
+  member,
+  daily,
+  chatLog,
+  conversationTimeRange,
+  conversationTimeStart,
+  conversationDurationMin,
+  loading,
+  error,
+}: {
+  member: Member;
+  daily: DailyView;
+  chatLog: ChatMessage[];
+  conversationTimeRange: string;
+  conversationTimeStart: string;
+  conversationDurationMin: number;
+  loading: boolean;
+  error: string | null;
+}) {
+  const d = daily;
+  const visibleChat = chatLog;
   const statusColor =
     d.statusTone === "good"
       ? "text-blue-500"
@@ -118,12 +635,16 @@ function DailyView({ member }: { member: Member }) {
       {/* Top-left: conversation card */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6">
-          <p className="text-xs text-white/80">{d.dateLabel}</p>
+          <p className="text-xs text-white/80">
+            {d.dateLabel}
+            {loading && <span className="ml-2">· 불러오는 중…</span>}
+            {error && <span className="ml-2">· {error}</span>}
+          </p>
           <div className="flex items-end gap-3 mt-3">
-            <span className="text-3xl font-bold">{member.conversationTimeRange}</span>
-            {member.conversationDurationMin > 0 && (
+            <span className="text-3xl font-bold">{conversationTimeRange}</span>
+            {conversationDurationMin > 0 && (
               <span className="bg-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full mb-1.5">
-                {member.conversationDurationMin}분 대화
+                {conversationDurationMin}분 대화
               </span>
             )}
           </div>
@@ -131,7 +652,9 @@ function DailyView({ member }: { member: Member }) {
 
         <div className="p-6">
           <p className="text-xs text-gray-500 mb-3">시간대별 대화 현황</p>
-          <ConversationSliderTrack member={member} />
+          <ConversationSliderTrack
+            member={{ ...member, conversationTimeStart }}
+          />
 
           <div className="grid grid-cols-4 gap-3 mt-6 pt-5 border-t border-gray-100">
             <div>
@@ -428,8 +951,16 @@ function WeeklyStatusBadge({
   return <span className={`font-bold ${color}`}>{children}</span>;
 }
 
-function WeeklyView({ member }: { member: Member }) {
-  const w = member.weekly;
+function WeeklyView({
+  weekly,
+  loading,
+  error,
+}: {
+  weekly: WeeklyView;
+  loading: boolean;
+  error: string | null;
+}) {
+  const w = weekly;
   const [mode, setMode] = useState<WeeklyMode>("score");
 
   return (
@@ -441,7 +972,11 @@ function WeeklyView({ member }: { member: Member }) {
           <div className="flex items-start justify-between">
             <div>
               <h3 className="font-bold text-gray-900">주간 감정지수 점수 요약</h3>
-              <p className="text-xs text-gray-500 mt-0.5">{w.rangeLabel}</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {w.rangeLabel}
+                {loading && <span className="ml-2 text-blue-500">불러오는 중…</span>}
+                {error && <span className="ml-2 text-red-500">{error}</span>}
+              </p>
             </div>
             <div className="bg-gray-100 rounded-full p-1 flex">
               <button
@@ -740,15 +1275,27 @@ const MONTHLY_TAG_TONE: Record<MonthlyView["tags"][number]["tone"], string> = {
   success: "bg-green-50 text-green-600 border border-green-100",
 };
 
-function MonthlyViewSection({ member }: { member: Member }) {
-  const m = member.monthly;
+function MonthlyViewSection({
+  monthly,
+  loading,
+  error,
+}: {
+  monthly: MonthlyView;
+  loading: boolean;
+  error: string | null;
+}) {
+  const m = monthly;
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-5">
         {/* Calendar */}
         <div className="bg-white rounded-2xl p-6 shadow-sm">
           <h3 className="font-bold text-gray-900">{m.title}</h3>
-          <p className="text-xs text-gray-500 mt-0.5 mb-5">{m.subtitle}</p>
+          <p className="text-xs text-gray-500 mt-0.5 mb-5">
+            {m.subtitle}
+            {loading && <span className="ml-2 text-blue-500">불러오는 중…</span>}
+            {error && <span className="ml-2 text-red-500">{error}</span>}
+          </p>
           <MonthlyCalendar monthly={m} />
         </div>
 
@@ -821,10 +1368,139 @@ function MonthlyViewSection({ member }: { member: Member }) {
 
 export default function ReportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const member = members.find((m) => String(m.id) === id);
-  if (!member) notFound();
+  const searchParams = useSearchParams();
+  const queryName = searchParams.get("name");
+  const queryRisk = searchParams.get("risk");
+  const member = useMemo<Member>(() => {
+    const fallbackMember = members.find((m) => String(m.id) === id);
+    const baseMember = fallbackMember ?? members[0];
+    const riskFromQuery: Member["risk"] | undefined =
+      queryRisk === "정상"
+        ? "안정"
+        : queryRisk === "주의"
+          ? "주의"
+          : queryRisk === "대화 필요" || queryRisk === "위험"
+            ? "긴급"
+            : undefined;
+    return {
+      ...baseMember,
+      id: Number(id),
+      name: queryName ?? baseMember.name,
+      initial: (queryName ?? baseMember.name).charAt(0),
+      risk: riskFromQuery ?? baseMember.risk,
+    };
+  }, [id, queryName, queryRisk]);
 
   const [tab, setTab] = useState<ReportTab>("일간");
+  const [date, setDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  });
+  const [dailyData, setDailyData] = useState<DailyApiResult | null>(null);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyError, setDailyError] = useState<string | null>(null);
+  const [weeklyData, setWeeklyData] = useState<WeeklyView | null>(null);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [weeklyError, setWeeklyError] = useState<string | null>(null);
+  const [monthlyData, setMonthlyData] = useState<MonthlyView | null>(null);
+  const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const [monthlyError, setMonthlyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (tab !== "일간") return;
+    let cancelled = false;
+    setDailyLoading(true);
+    setDailyError(null);
+
+    fetch("/proxy/api/elder/daily", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ elder_id: Number(id), date }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`API 요청 실패: ${res.status}`);
+        return (await res.json()) as DailyApiResponse;
+      })
+      .then((json) => {
+        if (cancelled) return;
+        setDailyData(mapDailyApi(json.data, date));
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setDailyError(err instanceof Error ? err.message : "데이터를 불러올 수 없습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setDailyLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, id, date]);
+
+  useEffect(() => {
+    if (tab !== "주간" || !member) return;
+    let cancelled = false;
+    setWeeklyLoading(true);
+    setWeeklyError(null);
+
+    fetch("/proxy/api/elder/weekly", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ elder_id: Number(id), date }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`API 요청 실패: ${res.status}`);
+        return (await res.json()) as WeeklyApiResponse;
+      })
+      .then((json) => {
+        if (cancelled) return;
+        setWeeklyData(mapWeeklyApi(json.data, member.weekly, date));
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setWeeklyError(err instanceof Error ? err.message : "데이터를 불러올 수 없습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setWeeklyLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, id, date]);
+
+  useEffect(() => {
+    if (tab !== "월간" || !member) return;
+    let cancelled = false;
+    setMonthlyLoading(true);
+    setMonthlyError(null);
+
+    fetch("/proxy/api/elder/monthly", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ elder_id: Number(id), date }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`API 요청 실패: ${res.status}`);
+        return (await res.json()) as MonthlyApiResponse;
+      })
+      .then((json) => {
+        if (cancelled) return;
+        setMonthlyData(mapMonthlyApi(json.data, member.monthly, date));
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setMonthlyError(err instanceof Error ? err.message : "데이터를 불러올 수 없습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setMonthlyLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, id, date]);
 
   const riskLabel = member.risk === "안정" ? "정상" : member.risk;
   const riskBadgeColor =
@@ -856,11 +1532,17 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           </div>
         </div>
         <div className="flex items-center gap-3 mt-7">
-          <button className="flex items-center gap-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-full px-4 py-1.5 hover:bg-gray-50">
-            <span>📅</span>
-            <span className="font-medium">2026. 05. 30</span>
-            <span className="text-xs text-gray-400">▼</span>
-          </button>
+          <label className="relative flex items-center gap-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-full px-4 py-1.5 hover:bg-gray-50 cursor-pointer">
+            <span aria-hidden>📅</span>
+            <span className="font-medium">{formatKoreanDate(date)}</span>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              aria-label="조회 날짜 선택"
+            />
+          </label>
         </div>
       </div>
 
@@ -884,9 +1566,47 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
         </div>
       </div>
 
-      {tab === "일간" && <DailyView member={member} />}
-      {tab === "주간" && <WeeklyView member={member} />}
-      {tab === "월간" && <MonthlyViewSection member={member} />}
+      {tab === "일간" &&
+        (dailyLoading && !dailyData ? (
+          <DailySkeleton />
+        ) : (
+          <DailyView
+            member={member}
+            daily={dailyData?.daily ?? member.daily}
+            chatLog={dailyData?.chatLog ?? member.chatLog}
+            conversationTimeRange={
+              dailyData?.conversationTimeRange ?? member.conversationTimeRange
+            }
+            conversationTimeStart={
+              dailyData?.conversationTimeStart ?? member.conversationTimeStart
+            }
+            conversationDurationMin={
+              dailyData?.conversationDurationMin ?? member.conversationDurationMin
+            }
+            loading={dailyLoading}
+            error={dailyError}
+          />
+        ))}
+      {tab === "주간" &&
+        (weeklyLoading && !weeklyData ? (
+          <WeeklySkeleton />
+        ) : (
+          <WeeklyView
+            weekly={weeklyData ?? member.weekly}
+            loading={weeklyLoading}
+            error={weeklyError}
+          />
+        ))}
+      {tab === "월간" &&
+        (monthlyLoading && !monthlyData ? (
+          <MonthlySkeleton />
+        ) : (
+          <MonthlyViewSection
+            monthly={monthlyData ?? member.monthly}
+            loading={monthlyLoading}
+            error={monthlyError}
+          />
+        ))}
     </div>
   );
 }

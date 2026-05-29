@@ -1,10 +1,109 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type FilterType = "전체" | "대화 필요" | "주의" | "정상";
 type Severity = "정상" | "주의" | "위험" | "대화 필요";
+
+type ApiGender = "MALE" | "FEMALE";
+type ApiStatus = "DANGER" | "WARNING" | "STABLE";
+
+interface ApiElder {
+  elder_id: number;
+  name: string;
+  age: number;
+  gender: ApiGender;
+  weekly_conv: number;
+  score: number[];
+  status: ApiStatus;
+}
+
+interface ApiResponse {
+  data: ApiElder[];
+}
+
+const STATUS_TO_SEVERITY: Record<ApiStatus, Severity> = {
+  STABLE: "정상",
+  WARNING: "주의",
+  DANGER: "대화 필요",
+};
+
+const STATUS_EDGE_COLOR: Record<ApiStatus, string> = {
+  STABLE: "bg-green-400",
+  WARNING: "bg-amber-400",
+  DANGER: "bg-red-400",
+};
+
+const STATUS_AVATAR_COLOR: Record<ApiStatus, string> = {
+  STABLE: "bg-green-100 text-green-700",
+  WARNING: "bg-amber-100 text-amber-700",
+  DANGER: "bg-red-100 text-red-700",
+};
+
+function scoreToBar(score: number | undefined): number {
+  if (score === undefined || score === null) return 0;
+  return Math.max(1, Math.min(5, Math.round((score / 100) * 5)));
+}
+
+function buildAiTags(elder: ApiElder): AiTag[] {
+  if (!elder.score || elder.score.length === 0) {
+    if (elder.status === "DANGER") return [{ label: "긴급 점검 필요", tone: "danger" }];
+    if (elder.status === "WARNING") return [{ label: "주의 관찰", tone: "warning" }];
+    return [{ label: "이상 없음", tone: "neutral" }];
+  }
+
+  const labels: { idx: number; label: string }[] = [
+    { idx: 0, label: "고립감" },
+    { idx: 1, label: "인지부하" },
+    { idx: 2, label: "감정변동" },
+    { idx: 3, label: "활력저하" },
+    { idx: 4, label: "건강불안" },
+  ];
+  const flagged = labels
+    .map((l) => ({ ...l, score: elder.score[l.idx] ?? 0 }))
+    .filter((l) => l.score < 50);
+
+  if (flagged.length === 0) return [{ label: "이상 없음", tone: "neutral" }];
+
+  return flagged.slice(0, 3).map((l) => ({
+    label: l.label,
+    tone: l.score < 30 ? "danger" : "warning",
+  }));
+}
+
+function elderToMember(elder: ApiElder): Member {
+  const [isolation = 0, cognition = 0, emotion = 0, vitality = 0, health = 0] = elder.score ?? [];
+  return {
+    id: elder.elder_id,
+    name: elder.name,
+    initial: elder.name.charAt(0),
+    avatarColor: STATUS_AVATAR_COLOR[elder.status],
+    edgeColor: STATUS_EDGE_COLOR[elder.status],
+    age: elder.age,
+    gender: elder.gender === "MALE" ? "남" : "여",
+    lastChat: "-",
+    chatCount: elder.weekly_conv,
+    riskLevel: STATUS_TO_SEVERITY[elder.status],
+    emotionBars: {
+      isolation: scoreToBar(isolation),
+      health: scoreToBar(health),
+      vitality: scoreToBar(vitality),
+      emotion: scoreToBar(emotion),
+      cognition: scoreToBar(cognition),
+    },
+    aiTags: buildAiTags(elder),
+    memo: "",
+    phone: "",
+    registeredAt: "",
+    address: "",
+    guardian: "",
+    appStatus: "",
+    activeStatus: "",
+    visits: [],
+    services: [],
+  };
+}
 
 interface VisitRecord {
   date: string;
@@ -270,13 +369,14 @@ const TAG_TONE: Record<AiTag["tone"], string> = {
 
 function ChatGauge({ count }: { count: number }) {
   const total = 7;
+  const filled = Math.max(0, Math.min(total, count));
   return (
     <div className="flex items-center gap-2">
       <div className="flex items-center gap-1">
         {Array.from({ length: total }).map((_, i) => (
           <span
             key={i}
-            className={`w-2 h-2 rounded-full ${i < count ? "bg-blue-500" : "bg-gray-200"}`}
+            className={`w-2 h-2 rounded-full ${i < filled ? "bg-blue-500" : "bg-gray-200"}`}
           />
         ))}
       </div>
@@ -326,10 +426,38 @@ export default function MembersPage() {
   const [activeFilter, setActiveFilter] = useState<FilterType>("전체");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [apiMembers, setApiMembers] = useState<Member[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/proxy/api/main");
+        if (!res.ok) throw new Error(`API 요청 실패: ${res.status}`);
+        const json = (await res.json()) as ApiResponse;
+        if (!cancelled) {
+          setApiMembers((json.data ?? []).map(elderToMember));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "데이터를 불러올 수 없습니다.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filters: FilterType[] = ["전체", "대화 필요", "주의", "정상"];
 
-  const filteredMembers = members
+  const sourceMembers = apiMembers ?? members;
+  const filteredMembers = sourceMembers
     .filter((m) => {
       if (activeFilter === "전체") return true;
       return m.riskLevel === activeFilter;
@@ -342,7 +470,9 @@ export default function MembersPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">통합 인원관리</h1>
         <p className="text-sm text-gray-500 mt-1">
-          담당 어르신 실시간 통합 현황 · 총 15명 관리 중
+          담당 어르신 실시간 통합 현황 · 총 {sourceMembers.length}명 관리 중
+          {loading && <span className="ml-2 text-blue-500">불러오는 중…</span>}
+          {error && <span className="ml-2 text-red-500">{error}</span>}
         </p>
       </div>
 
@@ -466,7 +596,13 @@ export default function MembersPage() {
                 </td>
                 <td className="py-4 px-4">
                   <Link
-                    href={`/dashboard/members/${member.id}`}
+                    href={{
+                      pathname: `/dashboard/members/${member.id}`,
+                      query: {
+                        name: member.name,
+                        risk: member.riskLevel,
+                      },
+                    }}
                     className="inline-block text-sm text-blue-500 bg-blue-50 hover:bg-blue-100 rounded-lg px-4 py-1.5 font-medium whitespace-nowrap"
                   >
                     상세보기
