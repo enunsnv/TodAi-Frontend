@@ -7,6 +7,8 @@ import {
   members,
   type DailyEmotionScore,
   type Member,
+  type MonthlyDay,
+  type MonthlyView,
   type RadarMetric,
   type WeeklyView,
 } from "../_data";
@@ -563,10 +565,256 @@ function WeeklyView({ member }: { member: Member }) {
   );
 }
 
-function MonthlyPlaceholder() {
+function MonthlyCalendarCell({ day }: { day: MonthlyView["days"][number] }) {
+  if (day.isToday) {
+    return (
+      <div className="aspect-square rounded-lg bg-white border-2 border-blue-400 flex flex-col items-center justify-center">
+        <span className="text-sm font-bold text-blue-500">{day.day}</span>
+        <span className="text-[10px] font-medium text-blue-500">오늘</span>
+      </div>
+    );
+  }
+
+  if (day.score === null) {
+    return (
+      <div className="aspect-square rounded-lg bg-gray-50 flex items-center justify-center">
+        <span className="text-sm text-gray-400">{day.day}</span>
+      </div>
+    );
+  }
+
+  let bg = "bg-red-500";
+  if (day.score >= 70) bg = "bg-green-500";
+  else if (day.score >= 40) bg = "bg-amber-400";
+
   return (
-    <div className="bg-white rounded-2xl p-12 shadow-sm text-center text-gray-400">
-      월간 리포트는 준비 중입니다.
+    <div className={`aspect-square rounded-lg ${bg} flex flex-col items-center justify-center`}>
+      <span className="text-sm font-bold text-white">{day.day}</span>
+      <span className="text-[10px] font-medium text-white">{day.score}점</span>
+    </div>
+  );
+}
+
+function MonthlyEmptyCell({ day }: { day: number }) {
+  return (
+    <div className="aspect-square rounded-lg border border-dashed border-gray-200 flex flex-col items-center justify-center">
+      <span className="text-sm text-gray-300">{day}</span>
+      <span className="text-[10px] text-gray-300">대화 없음</span>
+    </div>
+  );
+}
+
+function MonthlyCalendar({ monthly }: { monthly: MonthlyView }) {
+  const weekdayLabels = ["월", "화", "수", "목", "금", "토", "일"];
+
+  // startWeekday: 0=Sun..6=Sat → convert to Mon-first index (0=Mon..6=Sun)
+  const monStart = (monthly.startWeekday + 6) % 7;
+
+  const cells: (MonthlyDay | null)[] = [];
+  for (let i = 0; i < monStart; i++) cells.push(null);
+  for (const d of monthly.days) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  // For day 6 in image it shows "대화 없음" with dashed border - treat score:null with day<=20 as "no chat" cell
+  return (
+    <div>
+      <div className="grid grid-cols-7 gap-2 mb-3">
+        {weekdayLabels.map((w) => (
+          <div key={w} className="text-center text-xs text-gray-400 font-medium">
+            {w}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-2">
+        {cells.map((d, i) => {
+          if (d === null) return <div key={`empty-${i}`} className="aspect-square" />;
+          if (d.score === null && !d.isToday && d.day === 6)
+            return <MonthlyEmptyCell key={d.day} day={d.day} />;
+          return <MonthlyCalendarCell key={d.day} day={d} />;
+        })}
+      </div>
+
+      <div className="flex items-center gap-4 mt-4 text-[11px] text-gray-500">
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-sm bg-green-500" />
+          <span>70-100점</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-sm bg-amber-400" />
+          <span>40-69점</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-sm bg-red-500" />
+          <span>0-39점</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-sm border border-dashed border-gray-300" />
+          <span>대화 없음</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonthlyTrendChart({ trend }: { trend: MonthlyView["weekTrend"] }) {
+  const width = 420;
+  const height = 240;
+  const padTop = 30;
+  const padBottom = 50;
+  const padLeft = 44;
+  const padRight = 20;
+  const innerW = width - padLeft - padRight;
+  const innerH = height - padTop - padBottom;
+  const ticks = [0, 25, 50, 75, 100];
+  const max = 100;
+
+  const x = (i: number) => padLeft + (innerW * i) / Math.max(1, trend.length - 1);
+  const y = (v: number) => padTop + innerH * (1 - v / max);
+
+  const path = trend
+    .map((t, i) => `${i === 0 ? "M" : "L"}${x(i)},${y(t.score)}`)
+    .join(" ");
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
+      {ticks.map((t) => (
+        <g key={t}>
+          <line
+            x1={padLeft}
+            x2={width - padRight}
+            y1={y(t)}
+            y2={y(t)}
+            stroke="#f3f4f6"
+            strokeWidth={1}
+          />
+          <text
+            x={padLeft - 8}
+            y={y(t)}
+            textAnchor="end"
+            dominantBaseline="middle"
+            className="fill-gray-400 text-[10px]"
+          >
+            {t}점
+          </text>
+        </g>
+      ))}
+
+      <path d={path} fill="none" stroke="rgb(59,130,246)" strokeWidth={2} />
+
+      {trend.map((t, i) => (
+        <g key={t.label}>
+          <circle cx={x(i)} cy={y(t.score)} r={4} fill="rgb(59,130,246)" />
+          <text
+            x={x(i)}
+            y={y(t.score) - 10}
+            textAnchor="middle"
+            className="fill-blue-500 text-[11px] font-bold"
+          >
+            {t.score}점
+          </text>
+          <text
+            x={x(i)}
+            y={height - padBottom + 18}
+            textAnchor="middle"
+            className="fill-gray-600 text-[11px] font-medium"
+          >
+            {t.label}
+          </text>
+          <text
+            x={x(i)}
+            y={height - padBottom + 32}
+            textAnchor="middle"
+            className="fill-gray-400 text-[10px]"
+          >
+            {t.range}
+          </text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+const MONTHLY_TAG_TONE: Record<MonthlyView["tags"][number]["tone"], string> = {
+  danger: "bg-red-50 text-red-600 border border-red-100",
+  info: "bg-blue-50 text-blue-600 border border-blue-100",
+  success: "bg-green-50 text-green-600 border border-green-100",
+};
+
+function MonthlyViewSection({ member }: { member: Member }) {
+  const m = member.monthly;
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-5">
+        {/* Calendar */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm">
+          <h3 className="font-bold text-gray-900">{m.title}</h3>
+          <p className="text-xs text-gray-500 mt-0.5 mb-5">{m.subtitle}</p>
+          <MonthlyCalendar monthly={m} />
+        </div>
+
+        {/* Trend chart */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm">
+          <h3 className="font-bold text-gray-900">월간 감정지수 추이</h3>
+          <p className="text-xs text-gray-500 mt-0.5">최근 4주 감정지수</p>
+
+          <div className="mt-4">
+            <MonthlyTrendChart trend={m.weekTrend} />
+          </div>
+
+          <div className="grid grid-cols-4 gap-3 mt-4 pt-5 border-t border-gray-100">
+            <div>
+              <p className="text-[11px] text-gray-400">최근 4주 평균 점수</p>
+              <p className="mt-1">
+                <span className="text-2xl font-bold text-blue-500">{m.averageScore}</span>
+                <span className="text-sm text-blue-500 ml-0.5">점</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-gray-400">대화 일수</p>
+              <p className="mt-1">
+                <span className="text-2xl font-bold text-blue-500">{m.conversationDays}</span>
+                <span className="text-sm text-blue-500 ml-0.5">점</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-gray-400">최고 점수</p>
+              <p className="mt-1">
+                <span className="text-2xl font-bold text-green-500">{m.maxScore}</span>
+                <span className="text-sm text-green-500 ml-0.5">점</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-gray-400">최저 점수</p>
+              <p className="mt-1">
+                <span className="text-2xl font-bold text-red-500">{m.minScore}</span>
+                <span className="text-sm text-red-500 ml-0.5">점</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Report */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm">
+        <h3 className="font-bold text-gray-900">{m.reportTitle}</h3>
+        <p className="text-xs text-gray-500 mt-0.5">{m.reportSubtitle}</p>
+
+        <div className="border-t border-gray-100 mt-4 pt-4">
+          <div className="flex flex-wrap gap-2 mb-4">
+            {m.tags.map((t) => (
+              <span
+                key={t.text}
+                className={`text-xs font-medium px-3 py-1.5 rounded-md ${MONTHLY_TAG_TONE[t.tone]}`}
+              >
+                {t.icon} {t.text}
+              </span>
+            ))}
+          </div>
+          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+            {m.reportText}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -593,9 +841,10 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
         <div>
           <Link
             href="/dashboard/members"
-            className="text-sm text-blue-500 font-medium hover:underline mb-1 inline-block"
+            className="inline-flex items-center gap-1 text-sm text-blue-500 font-medium hover:underline mb-1"
           >
-            인원관리
+            <span aria-hidden>←</span>
+            <span>인원관리로 돌아가기</span>
           </Link>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">
@@ -637,7 +886,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
 
       {tab === "일간" && <DailyView member={member} />}
       {tab === "주간" && <WeeklyView member={member} />}
-      {tab === "월간" && <MonthlyPlaceholder />}
+      {tab === "월간" && <MonthlyViewSection member={member} />}
     </div>
   );
 }

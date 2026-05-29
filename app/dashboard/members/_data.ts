@@ -83,6 +83,41 @@ export interface WeeklyView {
   notes: CaseworkerNote[];
 }
 
+export interface MonthlyDay {
+  day: number;
+  score: number | null;
+  isToday?: boolean;
+}
+
+export interface MonthlyWeekTrend {
+  label: string;
+  range: string;
+  score: number;
+}
+
+export interface MonthlyTag {
+  icon: string;
+  text: string;
+  tone: "danger" | "info" | "success";
+}
+
+export interface MonthlyView {
+  title: string;
+  subtitle: string;
+  startWeekday: number;
+  daysInMonth: number;
+  days: MonthlyDay[];
+  weekTrend: MonthlyWeekTrend[];
+  averageScore: number;
+  conversationDays: number;
+  maxScore: number;
+  minScore: number;
+  reportTitle: string;
+  reportSubtitle: string;
+  tags: MonthlyTag[];
+  reportText: string;
+}
+
 export interface Member {
   id: number;
   name: string;
@@ -107,6 +142,7 @@ export interface Member {
   quickMemo: { text: string; date: string };
   daily: DailyView;
   weekly: WeeklyView;
+  monthly: MonthlyView;
 }
 
 const DEFAULT_CHAT: ChatMessage[] = [
@@ -199,6 +235,65 @@ const DEFAULT_WEEKLY: WeeklyView = {
   ],
 };
 
+const DEFAULT_MONTHLY: MonthlyView = {
+  title: "월간 감정지수 - 2026년 5월",
+  subtitle: "날짜별 감정지수 (0-100점)",
+  startWeekday: 4,
+  daysInMonth: 31,
+  days: [
+    { day: 1, score: 68 },
+    { day: 2, score: 67 },
+    { day: 3, score: 38 },
+    { day: 4, score: 88 },
+    { day: 5, score: 68 },
+    { day: 6, score: null },
+    { day: 7, score: 78 },
+    { day: 8, score: 90 },
+    { day: 9, score: 88 },
+    { day: 10, score: 80 },
+    { day: 11, score: 94 },
+    { day: 12, score: 74 },
+    { day: 13, score: 69 },
+    { day: 14, score: 39 },
+    { day: 15, score: 71 },
+    { day: 16, score: 86 },
+    { day: 17, score: 92 },
+    { day: 18, score: 85 },
+    { day: 19, score: 81 },
+    { day: 20, score: 77 },
+    { day: 21, score: null, isToday: true },
+    { day: 22, score: null },
+    { day: 23, score: null },
+    { day: 24, score: null },
+    { day: 25, score: null },
+    { day: 26, score: null },
+    { day: 27, score: null },
+    { day: 28, score: null },
+    { day: 29, score: null },
+    { day: 30, score: null },
+    { day: 31, score: null },
+  ],
+  weekTrend: [
+    { label: "1주차", range: "4/20~4/26", score: 79 },
+    { label: "2주차", range: "4/27~5/3", score: 63 },
+    { label: "3주차", range: "5/4~5/10", score: 75 },
+    { label: "4주차", range: "5/11~5/17", score: 82 },
+  ],
+  averageScore: 74.75,
+  conversationDays: 28,
+  maxScore: 96,
+  minScore: 33,
+  reportTitle: "월간 분석 리포트 - 2026년 5월",
+  reportSubtitle: "최근 4주 종합 분석 및 다음달 권고사항",
+  tags: [
+    { icon: "⚠", text: "무릎 통증 8회 언급", tone: "danger" },
+    { icon: "🏥", text: "정형외과 방문 연계 권장", tone: "info" },
+    { icon: "📅", text: "5월 3일 정기 방문 확인", tone: "success" },
+  ],
+  reportText:
+    "김순자 어르신은 5월 한 달 동안 총 19일의 대화를 이어가며 월평균 감정지수 78점을 기록하였습니다. 이는 지난달(65점) 대비 13점 상승한 결과로, 정기적인 AI 대화 습관이 정서 안정에 긍정적인 영향을 미치고 있는 것으로 분석됩니다.\n\n3주차(4월 14~20일)에 80점 이상의 감정 점수가 집중적으로 나타났으며, 5월 11일에는 이달 최고점인 94점을 기록하였습니다. 다만 무릎 통증 관련 언급이 이달 총 8회로 지속적으로 감지되었고, 5월 3일(38점) 저점 당시 건강 우려와 고립감이 복합적으로 나타났습니다. 다음 달에는 정형외과 방문 연계 및 가족과의 연락 빈도 증가를 권장드립니다.",
+};
+
 export const members: Member[] = [
   {
     id: 1,
@@ -227,6 +322,7 @@ export const members: Member[] = [
     quickMemo: { text: "고립감 신호 확인 → 방문 일정 조율 필요", date: "2025.04.08" },
     daily: DEFAULT_DAILY,
     weekly: DEFAULT_WEEKLY,
+    monthly: DEFAULT_MONTHLY,
   },
   {
     id: 2,
@@ -252,6 +348,7 @@ export const members: Member[] = [
     quickMemo: { text: "건강 불안 호소 → 방문 진료 필요", date: "2025.04.08" },
     daily: DEFAULT_DAILY,
     weekly: DEFAULT_WEEKLY,
+    monthly: DEFAULT_MONTHLY,
   },
   {
     id: 3,
@@ -277,6 +374,7 @@ export const members: Member[] = [
     quickMemo: { text: "감정 기복 관찰 필요", date: "2025.04.07" },
     daily: DEFAULT_DAILY,
     weekly: DEFAULT_WEEKLY,
+    monthly: DEFAULT_MONTHLY,
   },
   {
     id: 4,
@@ -302,6 +400,7 @@ export const members: Member[] = [
     quickMemo: { text: "인지 검사 결과 재확인", date: "2025.04.07" },
     daily: DEFAULT_DAILY,
     weekly: DEFAULT_WEEKLY,
+    monthly: DEFAULT_MONTHLY,
   },
   {
     id: 5,
@@ -327,6 +426,7 @@ export const members: Member[] = [
     quickMemo: { text: "무릎 통증 2회 언급 → 방문 일정 조율 필요", date: "2025.04.08" },
     daily: DEFAULT_DAILY,
     weekly: DEFAULT_WEEKLY,
+    monthly: DEFAULT_MONTHLY,
   },
   {
     id: 6,
@@ -352,6 +452,7 @@ export const members: Member[] = [
     quickMemo: { text: "우울감 호소 - 상담 예약", date: "2025.04.07" },
     daily: DEFAULT_DAILY,
     weekly: DEFAULT_WEEKLY,
+    monthly: DEFAULT_MONTHLY,
   },
   {
     id: 7,
@@ -377,6 +478,7 @@ export const members: Member[] = [
     quickMemo: { text: "이상 무", date: "2025.04.08" },
     daily: DEFAULT_DAILY,
     weekly: DEFAULT_WEEKLY,
+    monthly: DEFAULT_MONTHLY,
   },
   {
     id: 8,
@@ -421,5 +523,6 @@ export const members: Member[] = [
       hiddenMessageCount: 0,
     },
     weekly: DEFAULT_WEEKLY,
+    monthly: DEFAULT_MONTHLY,
   },
 ];

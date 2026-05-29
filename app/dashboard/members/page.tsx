@@ -394,10 +394,10 @@ export default function MembersPage() {
 
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-        <table className="w-full">
+        <table className="w-full table-fixed">
           <thead>
-            <tr className="bg-slate-50">
-              <th className="text-left py-3 pl-6 pr-4 text-sm font-medium text-gray-500">
+            <tr className="bg-white border-b border-gray-100">
+              <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
                 이름 | 나이 | 성별
               </th>
               <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
@@ -420,7 +420,7 @@ export default function MembersPage() {
                 key={member.id}
                 className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50 relative"
               >
-                <td className="py-4 pl-6 pr-4 relative">
+                <td className="py-4 px-4 relative">
                   <span
                     className={`absolute left-0 top-2 bottom-2 w-1 rounded-r ${member.edgeColor}`}
                   />
@@ -464,9 +464,9 @@ export default function MembersPage() {
                     ))}
                   </div>
                 </td>
-                <td className="py-4 px-4 pr-6">
+                <td className="py-4 px-4">
                   <Link
-                    href={`/dashboard/members/analysis/${member.id}`}
+                    href={`/dashboard/members/${member.id}`}
                     className="inline-block text-sm text-blue-500 bg-blue-50 hover:bg-blue-100 rounded-lg px-4 py-1.5 font-medium whitespace-nowrap"
                   >
                     상세보기
